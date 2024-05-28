@@ -3,7 +3,7 @@ package gamelogic
 import (
 	"fmt"
 
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+	"pubsub/internal/routing"
 )
 
 func (gs *GameState) HandlePause(ps routing.PlayingState) {

@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"pubsub/internal/routing"
 	"time"
-
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 )
 
 const logsFile = "game.log"
