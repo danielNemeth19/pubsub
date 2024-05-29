@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"pubsub/internal/gamelogic"
+	"pubsub/internal/pubsub"
+	"pubsub/internal/routing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -15,6 +17,7 @@ func main() {
 	if err != nil {
 		panic("Error establishing connection")
 	}
-    username, _ := gamelogic.ClientWelcome()
-    fmt.Printf("username is: %s\n", username)
+	username, _ := gamelogic.ClientWelcome()
+	fmt.Printf("username is: %s\n", username)
+	pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
 }
