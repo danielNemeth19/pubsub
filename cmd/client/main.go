@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"pubsub/internal/gamelogic"
 	"pubsub/internal/pubsub"
 	"pubsub/internal/routing"
@@ -19,5 +21,21 @@ func main() {
 	}
 	username, _ := gamelogic.ClientWelcome()
 	fmt.Printf("username is: %s\n", username)
-	pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
+    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
+    defer func() {
+        fmt.Println("Closing channel and connection")
+        err := chn.Close()
+        if err != nil {
+            fmt.Println("Closing channel failed: ", err)
+
+        }
+        err = conn.Close()
+        if err != nil {
+            fmt.Println("Closing connection failed: ", err)
+
+        }
+    }()
+    signalChan := make(chan os.Signal, 1)
+    signal.Notify(signalChan, os.Interrupt )
+    <- signalChan
 }

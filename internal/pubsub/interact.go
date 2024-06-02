@@ -14,6 +14,15 @@ const (
     Transient = iota
 )
 
+func CreateExchange(ch *amqp.Channel, name, exchangeType string, exchangeParam int) error {
+    err := ch.ExchangeDeclare(name, exchangeType, exchangeParam == Durable, exchangeParam == Transient, false, false, nil)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	packet, err := json.Marshal(val)
 	if err != nil {
@@ -53,19 +62,5 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
     time.Sleep(60 * time.Second)
 
     fmt.Println("Queue bound successfully")
-    defer func() {
-        fmt.Println("Closing channel and connetion")
-        err := chn.Close()
-        if err != nil {
-            fmt.Println("Closing channel failed: ", err)
-
-        }
-        err = conn.Close()
-        if err != nil {
-            fmt.Println("Closing connection failed: ", err)
-
-        }
-    }()
     return chn, queue, nil
 }
-
