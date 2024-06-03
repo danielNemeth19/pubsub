@@ -15,27 +15,42 @@ func main() {
 	fmt.Println("Starting Peril client...")
 	connStr := "amqp://guest:guest@localhost:5672/"
 	conn, err := amqp.Dial(connStr)
-	defer conn.Close()
 	if err != nil {
 		panic("Error establishing connection")
 	}
+	defer conn.Close()
+
 	username, _ := gamelogic.ClientWelcome()
 	fmt.Printf("username is: %s\n", username)
-    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
-    defer func() {
-        fmt.Println("Closing channel and connection")
-        err := chn.Close()
-        if err != nil {
-            fmt.Println("Closing channel failed: ", err)
 
-        }
-        err = conn.Close()
-        if err != nil {
-            fmt.Println("Closing connection failed: ", err)
+	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
+	if err != nil {
+		panic("Error declaring and binding channel")
+	}
+	defer chn.Close()
 
-        }
-    }()
-    signalChan := make(chan os.Signal, 1)
-    signal.Notify(signalChan, os.Interrupt )
-    <- signalChan
+	msgChannel, err := chn.Consume(
+		routing.PauseKey+"."+username, // queue
+		"",                            // consumer
+		true,                          // auto-ack
+		false,                         // exclusive
+		false,                         // no-local
+		false,                         // no-wait
+		nil,                           // args
+	)
+	if err != nil {
+		panic("Error setting up consumer")
+	}
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
+
+	go func() {
+		for msg := range msgChannel {
+			fmt.Printf("Received message: %s\n", string(msg.Body))
+		}
+	}()
+	fmt.Println("Client running... Press Ctr-C to exit.")
+	<-signalChan
+	fmt.Println("Received signal, exiting...")
 }

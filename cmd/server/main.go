@@ -11,6 +11,43 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+    Pause = "pause"
+    Resume = "resume"
+    Quit = "quit"
+)
+
+func runLoop(ch *amqp.Channel) {
+	for {
+		textInput := gamelogic.GetInput()
+		fmt.Printf("TextInput is: %s\n", textInput)
+		if len(textInput) == 0 {
+			fmt.Println("Empty command")
+			continue
+		}
+        command := textInput[0]
+        if command == Quit {
+            break
+        }
+        switch command {
+        case Pause:
+            fmt.Println("Pause should be posted")
+            err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+			if err != nil {
+				fmt.Println("Publish has not been successful", err)
+			}
+        case Resume:
+            fmt.Println("Resume should be posted")
+            err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+			if err != nil {
+				fmt.Println("Publish has not been successful", err)
+			}
+        default:
+            fmt.Printf("Command not recognized: %s\n", textInput[0])
+        }
+    }
+}
+
 func main() {
 	fmt.Println("Starting Peril server...")
 	connStr := "amqp://guest:guest@localhost:5672/"
@@ -28,32 +65,8 @@ func main() {
 		fmt.Println("Exchange was not created: ", err)
 	}
 	gamelogic.PrintServerHelp()
+    runLoop(myC)
 
-	for {
-		textInput := gamelogic.GetInput()
-		fmt.Printf("TextInput is: %s\n", textInput)
-		if len(textInput) == 0 {
-			fmt.Println("Empty slice")
-			continue
-		} else if textInput[0] == routing.PauseKey {
-            fmt.Println("Pause should be posted")
-			err = pubsub.PublishJSON(myC, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
-			if err != nil {
-				fmt.Println("Publish has not been successful", err)
-			}
-		} else if textInput[0] == "resume" {
-            fmt.Println("Resume should be posted")
-			err = pubsub.PublishJSON(myC, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
-			if err != nil {
-				fmt.Println("Publish has not been successful", err)
-			}
-        } else if textInput[0] == "quit" {
-            fmt.Println("Quit message received")
-            break
-        } else {
-            fmt.Printf("Command not recognized: %s\n", textInput[0])
-        }
-	}
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 	<-signalChan
