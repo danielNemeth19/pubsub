@@ -9,6 +9,13 @@ import (
 )
 
 const (
+	Direct = "direct"
+	Fanout = "fanout"
+    Headers = "headers"
+    Topic = "topic"
+)
+
+const (
 	Durable   = iota
 	Transient = iota
 )

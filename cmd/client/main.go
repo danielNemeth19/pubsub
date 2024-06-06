@@ -11,6 +11,51 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	Spawn  = "spawn"
+	Move   = "move"
+	Status = "status"
+	Help   = "help"
+	Spam   = "spam"
+	Quit   = "quit"
+)
+
+func runClientLoop(ng *gamelogic.GameState) {
+	for {
+		textInput := gamelogic.GetInput()
+		fmt.Printf("TextInput is: %s\n", textInput)
+		command := textInput[0]
+		if command == Quit {
+			gamelogic.PrintQuit()
+			break
+		}
+		switch command {
+		case Spawn:
+			err := ng.CommandSpawn(textInput)
+			if err != nil {
+				fmt.Printf("Error spawning command: %s\n", err)
+			}
+		case Move:
+			move, err := ng.CommandMove(textInput)
+			if err != nil {
+				fmt.Printf("Error with move: %s\n", err)
+				continue
+			}
+			fmt.Printf("Move worked: %v\n", move)
+		case Status:
+			fmt.Println("Status should be presented")
+			ng.CommandStatus()
+		case Help:
+			fmt.Println("Help should be printed")
+			gamelogic.PrintClientHelp()
+		case Spam:
+			fmt.Println("Spamming not allowed yet!")
+		default:
+			fmt.Printf("Command not recognized: %s\n", textInput[0])
+		}
+	}
+}
+
 func main() {
 	fmt.Println("Starting Peril client...")
 	connStr := "amqp://guest:guest@localhost:5672/"
@@ -20,7 +65,10 @@ func main() {
 	}
 	defer conn.Close()
 
-	username, _ := gamelogic.ClientWelcome()
+	username, err := gamelogic.ClientWelcome()
+	if err != nil {
+		panic(err)
+	}
 	fmt.Printf("username is: %s\n", username)
 
 	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
@@ -28,6 +76,9 @@ func main() {
 		panic("Error declaring and binding channel")
 	}
 	defer chn.Close()
+
+	newGame := gamelogic.NewGameState(username)
+	runClientLoop(newGame)
 
 	msgChannel, err := chn.Consume(
 		routing.PauseKey+"."+username, // queue

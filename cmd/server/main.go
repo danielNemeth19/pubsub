@@ -12,9 +12,9 @@ import (
 )
 
 const (
-    Pause = "pause"
-    Resume = "resume"
-    Quit = "quit"
+	Pause  = "pause"
+	Resume = "resume"
+	Quit   = "quit"
 )
 
 func runLoop(ch *amqp.Channel) {
@@ -25,27 +25,38 @@ func runLoop(ch *amqp.Channel) {
 			fmt.Println("Empty command")
 			continue
 		}
-        command := textInput[0]
-        if command == Quit {
-            break
-        }
-        switch command {
-        case Pause:
-            fmt.Println("Pause should be posted")
-            err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+		command := textInput[0]
+		if command == Quit {
+			break
+		}
+		switch command {
+		case Pause:
+			fmt.Println("Pause should be posted")
+			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
 			if err != nil {
 				fmt.Println("Publish has not been successful", err)
 			}
-        case Resume:
-            fmt.Println("Resume should be posted")
-            err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+		case Resume:
+			fmt.Println("Resume should be posted")
+			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
 			if err != nil {
 				fmt.Println("Publish has not been successful", err)
 			}
-        default:
-            fmt.Printf("Command not recognized: %s\n", textInput[0])
-        }
-    }
+		default:
+			fmt.Printf("Command not recognized: %s\n", textInput[0])
+		}
+	}
+}
+
+func setUpExchanges(ch *amqp.Channel) {
+    err := pubsub.CreateExchange(ch, routing.ExchangePerilDirect, pubsub.Direct, pubsub.Durable)
+	if err != nil {
+		fmt.Println("Exchange was not created: ", err)
+	}
+    err = pubsub.CreateExchange(ch, routing.ExchangePerilTopic, pubsub.Topic, pubsub.Durable)
+	if err != nil {
+		fmt.Println("Exchange was not created: ", err)
+	}
 }
 
 func main() {
@@ -60,12 +71,9 @@ func main() {
 	if err != nil {
 		fmt.Println("Rabbit channel failed to open")
 	}
-	err = pubsub.CreateExchange(myC, routing.ExchangePerilDirect, "direct", pubsub.Durable)
-	if err != nil {
-		fmt.Println("Exchange was not created: ", err)
-	}
+    setUpExchanges(myC)
 	gamelogic.PrintServerHelp()
-    runLoop(myC)
+	runLoop(myC)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)

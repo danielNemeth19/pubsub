@@ -9,3 +9,11 @@ tail-rabbit:
 .PHONY: stop-rabbit
 stop-rabbit:
 	podman stop rabbitmq
+
+.PHONY: run-server
+run-server:
+	go run cmd/server/*.go
+
+.PHONY: run-client
+run-client:
+	go run cmd/client/*.go
