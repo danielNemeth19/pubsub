@@ -49,11 +49,11 @@ func runLoop(ch *amqp.Channel) {
 }
 
 func setUpExchanges(ch *amqp.Channel) {
-    err := pubsub.CreateExchange(ch, routing.ExchangePerilDirect, pubsub.Direct, pubsub.Durable)
+	err := pubsub.CreateExchange(ch, routing.ExchangePerilDirect, pubsub.Direct, pubsub.Durable)
 	if err != nil {
 		fmt.Println("Exchange was not created: ", err)
 	}
-    err = pubsub.CreateExchange(ch, routing.ExchangePerilTopic, pubsub.Topic, pubsub.Durable)
+	err = pubsub.CreateExchange(ch, routing.ExchangePerilTopic, pubsub.Topic, pubsub.Durable)
 	if err != nil {
 		fmt.Println("Exchange was not created: ", err)
 	}
@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		fmt.Println("Rabbit channel failed to open")
 	}
-    setUpExchanges(myC)
+	setUpExchanges(myC)
 	gamelogic.PrintServerHelp()
 	runLoop(myC)
 

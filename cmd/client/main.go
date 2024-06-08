@@ -75,6 +75,10 @@ func main() {
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
+	chn, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
+	if err != nil {
+		panic("Error declaring and binding channel")
+	}
 	defer chn.Close()
 
 	newGame := gamelogic.NewGameState(username)
