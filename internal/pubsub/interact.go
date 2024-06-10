@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	Direct = "direct"
-	Fanout = "fanout"
-    Headers = "headers"
-    Topic = "topic"
+	Direct  = "direct"
+	Fanout  = "fanout"
+	Headers = "headers"
+	Topic   = "topic"
 )
 
 const (
@@ -65,4 +65,32 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	}
 	fmt.Println("Queue bound successfully")
 	return chn, queue, nil
+}
+
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(T)) error {
+	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+        return fmt.Errorf("Declare and bind failed within subscribe: %w", err)
+	}
+	msgChannel, err := chn.Consume(
+		queueName, // queue
+		"",        // consumer
+		false,     // auto-ack
+		false,     // exclusive
+		false,     // no-local
+		false,     // no-wait
+		nil,       // args
+	)
+    // TODO think about this..
+	go func() {
+		for msg := range msgChannel {
+			fmt.Printf("Received message: %s\n", string(msg.Body))
+            var out T
+			json.Unmarshal(msg.Body, &out)
+            fmt.Println(out)
+            handler(out)
+            msg.Ack(false)
+		}
+	}()
+	return nil
 }

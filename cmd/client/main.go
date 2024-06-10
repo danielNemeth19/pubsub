@@ -20,10 +20,23 @@ const (
 	Quit   = "quit"
 )
 
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+    return func(ps routing.PlayingState) {
+        defer fmt.Printf("> ")
+        gs.HandlePause(ps)
+    }
+}
+
+
 func runClientLoop(ng *gamelogic.GameState) {
 	for {
 		textInput := gamelogic.GetInput()
 		fmt.Printf("TextInput is: %s\n", textInput)
+		if len(textInput) == 0 {
+			fmt.Println("Empty command")
+			continue
+		}
 		command := textInput[0]
 		if command == Quit {
 			gamelogic.PrintQuit()
@@ -71,40 +84,19 @@ func main() {
 	}
 	fmt.Printf("username is: %s\n", username)
 
-	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
-	if err != nil {
-		panic("Error declaring and binding channel")
-	}
-	chn, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
+    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
 	defer chn.Close()
 
 	newGame := gamelogic.NewGameState(username)
+    err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame))
 	runClientLoop(newGame)
-
-	msgChannel, err := chn.Consume(
-		routing.PauseKey+"."+username, // queue
-		"",                            // consumer
-		true,                          // auto-ack
-		false,                         // exclusive
-		false,                         // no-local
-		false,                         // no-wait
-		nil,                           // args
-	)
-	if err != nil {
-		panic("Error setting up consumer")
-	}
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 
-	go func() {
-		for msg := range msgChannel {
-			fmt.Printf("Received message: %s\n", string(msg.Body))
-		}
-	}()
 	fmt.Println("Client running... Press Ctr-C to exit.")
 	<-signalChan
 	fmt.Println("Received signal, exiting...")
