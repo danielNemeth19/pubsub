@@ -28,8 +28,15 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
     }
 }
 
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+    return func(am gamelogic.ArmyMove) {
+        defer fmt.Printf("> ")
+        gs.HandleMove(am)
+    }
+}
 
-func runClientLoop(ng *gamelogic.GameState) {
+
+func runClientLoop(chn *amqp.Channel, ng *gamelogic.GameState) {
 	for {
 		textInput := gamelogic.GetInput()
 		fmt.Printf("TextInput is: %s\n", textInput)
@@ -50,6 +57,7 @@ func runClientLoop(ng *gamelogic.GameState) {
 			}
 		case Move:
 			move, err := ng.CommandMove(textInput)
+            err = pubsub.PublishJSON(chn, routing.ExchangePerilTopic, "army_moves" + "." + ng.GetUsername(), move)
 			if err != nil {
 				fmt.Printf("Error with move: %s\n", err)
 				continue
@@ -90,9 +98,10 @@ func main() {
 	}
 	defer chn.Close()
 
-	newGame := gamelogic.NewGameState(username)
+    newGame := gamelogic.NewGameState(username)
+    err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame))
     err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame))
-	runClientLoop(newGame)
+	runClientLoop(chn, newGame)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
