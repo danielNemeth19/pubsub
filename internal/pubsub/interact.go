@@ -81,7 +81,6 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 		false,     // no-wait
 		nil,       // args
 	)
-    // TODO think about this..
 	go func() {
 		for msg := range msgChannel {
 			fmt.Printf("Received message: %s\n", string(msg.Body))

@@ -57,6 +57,18 @@ func setUpExchanges(ch *amqp.Channel) {
 	if err != nil {
 		fmt.Println("Exchange was not created: ", err)
 	}
+	err = pubsub.CreateExchange(ch, routing.ExchangePerilDlx, pubsub.Fanout, pubsub.Durable)
+	if err != nil {
+		fmt.Println("Exchange was not created: ", err)
+	}
+}
+
+func setUpDeadLetter(conn *amqp.Connection) {
+    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDlx, routing.PerilDlq, "", pubsub.Durable)
+	if err != nil {
+		panic("Error declaring and binding channel")
+	}
+	defer chn.Close()
 }
 
 func main() {
@@ -72,6 +84,7 @@ func main() {
 		fmt.Println("Rabbit channel failed to open")
 	}
 	setUpExchanges(myC)
+    setUpDeadLetter(conn)
 	gamelogic.PrintServerHelp()
 	runLoop(myC)
 
