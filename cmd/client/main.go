@@ -20,21 +20,28 @@ const (
 	Quit   = "quit"
 )
 
+type AckType string
+
+const (
+	Ack         AckType = "ack"
+	NackRequeue AckType = "nackrequeue"
+	NackDiscard AckType = "nackdiscard"
+)
 
 func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-    return func(ps routing.PlayingState) {
-        defer fmt.Printf("> ")
-        gs.HandlePause(ps)
-    }
+	return func(ps routing.PlayingState) {
+		defer fmt.Printf("> ")
+		gs.HandlePause(ps)
+	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
-    return func(am gamelogic.ArmyMove) {
-        defer fmt.Printf("> ")
-        gs.HandleMove(am)
-    }
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) int {
+	return func(am gamelogic.ArmyMove) int {
+		defer fmt.Printf("> ")
+		gs.HandleMove(am)
+		return 10
+	}
 }
-
 
 func runClientLoop(chn *amqp.Channel, ng *gamelogic.GameState) {
 	for {
@@ -57,7 +64,7 @@ func runClientLoop(chn *amqp.Channel, ng *gamelogic.GameState) {
 			}
 		case Move:
 			move, err := ng.CommandMove(textInput)
-            err = pubsub.PublishJSON(chn, routing.ExchangePerilTopic, "army_moves" + "." + ng.GetUsername(), move)
+			err = pubsub.PublishJSON(chn, routing.ExchangePerilTopic, "army_moves"+"."+ng.GetUsername(), move)
 			if err != nil {
 				fmt.Printf("Error with move: %s\n", err)
 				continue
@@ -92,15 +99,15 @@ func main() {
 	}
 	fmt.Printf("username is: %s\n", username)
 
-    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
+	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
 	defer chn.Close()
 
-    newGame := gamelogic.NewGameState(username)
-    err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame))
-    err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame))
+	newGame := gamelogic.NewGameState(username)
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame))
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame))
 	runClientLoop(chn, newGame)
 
 	signalChan := make(chan os.Signal, 1)
