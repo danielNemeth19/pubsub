@@ -20,26 +20,23 @@ const (
 	Quit   = "quit"
 )
 
-type AckType string
 
-const (
-	Ack         AckType = "ack"
-	NackRequeue AckType = "nackrequeue"
-	NackDiscard AckType = "nackdiscard"
-)
-
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	return func(ps routing.PlayingState) {
+func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState) pubsub.AckType {
+	return func(ps routing.PlayingState) pubsub.AckType {
 		defer fmt.Printf("> ")
 		gs.HandlePause(ps)
+        return pubsub.Ack
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) int {
-	return func(am gamelogic.ArmyMove) int {
+func handlerMove(gs *gamelogic.GameState) func(am gamelogic.ArmyMove) pubsub.AckType {
+	return func(am gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Printf("> ")
-		gs.HandleMove(am)
-		return 10
+        outcome := gs.HandleMove(am)
+        if outcome == gamelogic.MoveOutComeSafe || outcome == gamelogic.MoveOutcomeMakeWar {
+            return pubsub.Ack
+        } 
+		return pubsub.NackDiscard
 	}
 }
 
@@ -106,7 +103,7 @@ func main() {
 	defer chn.Close()
 
 	newGame := gamelogic.NewGameState(username)
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame))
+    err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame))
 	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame))
 	runClientLoop(chn, newGame)
 

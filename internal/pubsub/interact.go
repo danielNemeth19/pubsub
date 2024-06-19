@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"pubsub/internal/gamelogic"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -18,6 +19,14 @@ const (
 const (
 	Durable   = iota
 	Transient = iota
+)
+
+type AckType string
+
+const (
+	Ack         AckType = "ack"
+	NackRequeue AckType = "nackrequeue"
+	NackDiscard AckType = "nackdiscard"
 )
 
 func CreateExchange(ch *amqp.Channel, name, exchangeType string, exchangeParam int) error {
@@ -67,10 +76,10 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	return chn, queue, nil
 }
 
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(T)) error {
+func SubscribeJSON(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out gamelogic.GameState) AckType) error {
 	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
-        return fmt.Errorf("Declare and bind failed within subscribe: %w", err)
+		return fmt.Errorf("Declare and bind failed within subscribe: %w", err)
 	}
 	msgChannel, err := chn.Consume(
 		queueName, // queue
@@ -84,11 +93,24 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 	go func() {
 		for msg := range msgChannel {
 			fmt.Printf("Received message: %s\n", string(msg.Body))
-            var out T
-			json.Unmarshal(msg.Body, &out)
-            fmt.Println(out)
-            handler(out)
-            msg.Ack(false)
+			var out gamelogic.GameState
+            err := json.Unmarshal(msg.Body, &out)
+            if err != nil {
+                fmt.Printf("Failed to unmarshall message: %v\n", err)
+            }
+			fmt.Println(out)
+			ackType := handler(out)
+			switch ackType {
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("Message acknowledged")
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("Message negatively acknowledged and re-queued")
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("Message negatively acknowledged and discarded")
+			}
 		}
 	}()
 	return nil
