@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"pubsub/internal/gamelogic"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -76,7 +75,7 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	return chn, queue, nil
 }
 
-func SubscribeJSON(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out gamelogic.GameState) AckType) error {
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T) AckType) error {
 	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
 		return fmt.Errorf("Declare and bind failed within subscribe: %w", err)
@@ -93,12 +92,12 @@ func SubscribeJSON(conn *amqp.Connection, exchange, queueName, key string, simpl
 	go func() {
 		for msg := range msgChannel {
 			fmt.Printf("Received message: %s\n", string(msg.Body))
-			var out gamelogic.GameState
+			var out T
             err := json.Unmarshal(msg.Body, &out)
             if err != nil {
                 fmt.Printf("Failed to unmarshall message: %v\n", err)
             }
-			fmt.Println(out)
+            fmt.Printf("Out message to call handler with: %v\n", out)
 			ackType := handler(out)
 			switch ackType {
 			case Ack:
