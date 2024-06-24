@@ -96,7 +96,7 @@ func main() {
 	}
 	fmt.Printf("username is: %s\n", username)
 
-	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable)
+	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, nil)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}

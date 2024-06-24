@@ -51,7 +51,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return err
 }
 
-func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int) (*amqp.Channel, amqp.Queue, error) {
+func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, table amqp.Table) (*amqp.Channel, amqp.Queue, error) {
 	chn, err := conn.Channel()
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("Channel creation failed: %w", err)
@@ -60,7 +60,8 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	fmt.Printf("Creating queue with name: %s, durable: %v, autoDelete: %v, exclusive: %v\n",
 		queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient)
 
-	queue, err := chn.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, nil)
+    // last param will be an amqp.Table (currently nil)
+	queue, err := chn.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, table)
 
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("Queue declaration failed: %w", err)
@@ -76,7 +77,7 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 }
 
 func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T) AckType) error {
-	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType, nil)
 	if err != nil {
 		return fmt.Errorf("Declare and bind failed within subscribe: %w", err)
 	}

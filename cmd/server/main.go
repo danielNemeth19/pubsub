@@ -64,7 +64,8 @@ func setUpExchanges(ch *amqp.Channel) {
 }
 
 func setUpDeadLetter(conn *amqp.Connection) {
-    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDlx, routing.PerilDlq, "", pubsub.Durable)
+    myT := amqp.Table{"x-dead-letter-exchange": routing.ExchangePerilDlx}
+    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDlx, routing.PerilDlq, "", pubsub.Durable, myT)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
