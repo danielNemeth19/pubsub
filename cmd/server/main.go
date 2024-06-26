@@ -64,8 +64,8 @@ func setUpExchanges(ch *amqp.Channel) {
 }
 
 func setUpDeadLetter(conn *amqp.Connection) {
-    myT := amqp.Table{"x-dead-letter-exchange": routing.ExchangePerilDlx}
-    chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDlx, routing.PerilDlq, "", pubsub.Durable, myT)
+    deadLetterTable := pubsub.GetDeadLetterConfig()
+	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDlx, routing.PerilDlq, "", pubsub.Durable, deadLetterTable)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
@@ -85,7 +85,7 @@ func main() {
 		fmt.Println("Rabbit channel failed to open")
 	}
 	setUpExchanges(myC)
-    setUpDeadLetter(conn)
+	setUpDeadLetter(conn)
 	gamelogic.PrintServerHelp()
 	runLoop(myC)
 

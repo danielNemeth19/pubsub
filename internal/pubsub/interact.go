@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"pubsub/internal/routing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -27,6 +29,10 @@ const (
 	NackRequeue AckType = "nackrequeue"
 	NackDiscard AckType = "nackdiscard"
 )
+
+func GetDeadLetterConfig() amqp.Table {
+	return amqp.Table{"x-dead-letter-exchange": routing.ExchangePerilDlx}
+}
 
 func CreateExchange(ch *amqp.Channel, name, exchangeType string, exchangeParam int) error {
 	err := ch.ExchangeDeclare(name, exchangeType, exchangeParam == Durable, exchangeParam == Transient, false, false, nil)
@@ -60,14 +66,13 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	fmt.Printf("Creating queue with name: %s, durable: %v, autoDelete: %v, exclusive: %v\n",
 		queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient)
 
-    // last param will be an amqp.Table (currently nil)
 	queue, err := chn.QueueDeclare(queueName, simpleQueueType == Durable, simpleQueueType == Transient, simpleQueueType == Transient, false, table)
 
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("Queue declaration failed: %w", err)
 	}
-	fmt.Printf("Binding queue %s to exchange %s with key %s\n", queueName, exchange, key)
-	err = chn.QueueBind(queueName, key, exchange, false, nil)
+	fmt.Printf("Binding queue %s to exchange %s with key %s\n", queue.Name, exchange, key)
+	err = chn.QueueBind(queue.Name, key, exchange, false, nil)
 	if err != nil {
 		fmt.Println(err)
 		return nil, amqp.Queue{}, fmt.Errorf("Queue binding failed: %w", err)
@@ -77,7 +82,8 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 }
 
 func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T) AckType) error {
-	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType, nil)
+	deadLetterTable := GetDeadLetterConfig()
+	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType, deadLetterTable)
 	if err != nil {
 		return fmt.Errorf("Declare and bind failed within subscribe: %w", err)
 	}
@@ -90,26 +96,30 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 		false,     // no-wait
 		nil,       // args
 	)
+	if err != nil {
+		return fmt.Errorf("Failed to start consuming messages: %w", err)
+	}
 	go func() {
 		for msg := range msgChannel {
-			fmt.Printf("Received message: %s\n", string(msg.Body))
+			log.Printf("Received message: %s\n", string(msg.Body))
 			var out T
-            err := json.Unmarshal(msg.Body, &out)
-            if err != nil {
-                fmt.Printf("Failed to unmarshall message: %v\n", err)
-            }
-            fmt.Printf("Out message to call handler with: %v\n", out)
+			err := json.Unmarshal(msg.Body, &out)
+			if err != nil {
+				log.Printf("Failed to unmarshall message: %v\n", err)
+				continue
+			}
+			log.Printf("Out message to call handler with: %v\n", out)
 			ackType := handler(out)
 			switch ackType {
 			case Ack:
 				msg.Ack(false)
-				fmt.Println("Message acknowledged")
+				log.Println("Message acknowledged")
 			case NackRequeue:
 				msg.Nack(false, true)
-				fmt.Println("Message negatively acknowledged and re-queued")
+				log.Println("Message negatively acknowledged and re-queued")
 			case NackDiscard:
 				msg.Nack(false, false)
-				fmt.Println("Message negatively acknowledged and discarded")
+				log.Println("Message negatively acknowledged and discarded")
 			}
 		}
 	}()
