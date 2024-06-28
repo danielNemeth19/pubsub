@@ -21,19 +21,26 @@ const (
 )
 
 
-func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState) pubsub.AckType {
-	return func(ps routing.PlayingState) pubsub.AckType {
+func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState, conn *amqp.Connection) pubsub.AckType {
+	return func(ps routing.PlayingState, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
 		gs.HandlePause(ps)
         return pubsub.Ack
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(am gamelogic.ArmyMove) pubsub.AckType {
-	return func(am gamelogic.ArmyMove) pubsub.AckType {
+func handlerMove(gs *gamelogic.GameState) func(am gamelogic.ArmyMove, conn *amqp.Connection) pubsub.AckType {
+	return func(am gamelogic.ArmyMove, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
         outcome := gs.HandleMove(am)
-        if outcome == gamelogic.MoveOutComeSafe || outcome == gamelogic.MoveOutcomeMakeWar {
+        if outcome == gamelogic.MoveOutcomeMakeWar {
+            fmt.Printf("Gamestate owner: %s\n", gs.GetUsername())
+            chn, _ := conn.Channel()
+            key := routing.WarRecognitionsPrefix+"."+gs.GetUsername()
+            pubsub.PublishJSON(chn, routing.ExchangePerilTopic, key, "reque for fun" )
+            return pubsub.NackRequeue
+        }
+        if outcome == gamelogic.MoveOutComeSafe {
             return pubsub.Ack
         } 
 		return pubsub.NackDiscard

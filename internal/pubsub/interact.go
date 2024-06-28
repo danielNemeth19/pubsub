@@ -81,7 +81,7 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	return chn, queue, nil
 }
 
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T) AckType) error {
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T, conn *amqp.Connection) AckType) error {
 	deadLetterTable := GetDeadLetterConfig()
 	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType, deadLetterTable)
 	if err != nil {
@@ -109,7 +109,7 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 				continue
 			}
 			log.Printf("Out message to call handler with: %v\n", out)
-			ackType := handler(out)
+			ackType := handler(out, conn)
 			switch ackType {
 			case Ack:
 				msg.Ack(false)
