@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+    "log"
 	"os"
 	"os/signal"
 	"pubsub/internal/gamelogic"
@@ -20,31 +21,59 @@ const (
 	Quit   = "quit"
 )
 
-
 func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState, conn *amqp.Connection) pubsub.AckType {
 	return func(ps routing.PlayingState, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
 		gs.HandlePause(ps)
-        return pubsub.Ack
+		return pubsub.Ack
 	}
 }
 
 func handlerMove(gs *gamelogic.GameState) func(am gamelogic.ArmyMove, conn *amqp.Connection) pubsub.AckType {
 	return func(am gamelogic.ArmyMove, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
-        outcome := gs.HandleMove(am)
-        if outcome == gamelogic.MoveOutcomeMakeWar {
-            fmt.Printf("Gamestate owner: %s\n", gs.GetUsername())
-            chn, _ := conn.Channel()
-            key := routing.WarRecognitionsPrefix+"."+gs.GetUsername()
-            pubsub.PublishJSON(chn, routing.ExchangePerilTopic, key, "reque for fun" )
-            return pubsub.NackRequeue
-        }
-        if outcome == gamelogic.MoveOutComeSafe {
-            return pubsub.Ack
-        } 
+		outcome := gs.HandleMove(am)
+		if outcome == gamelogic.MoveOutcomeMakeWar {
+			fmt.Printf("Gamestate owner: %s\n", gs.GetUsername())
+			chn, _ := conn.Channel()
+			key := routing.WarRecognitionsPrefix + "." + gs.GetUsername()
+			pubsub.PublishJSON(chn, routing.ExchangePerilTopic, key, am)
+			return pubsub.NackRequeue
+		}
+		if outcome == gamelogic.MoveOutComeSafe {
+			return pubsub.Ack
+		}
 		return pubsub.NackDiscard
 	}
+}
+
+func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar, conn *amqp.Connection) pubsub.AckType {
+    return func(rw gamelogic.RecognitionOfWar, conn *amqp.Connection) pubsub.AckType  {
+        defer fmt.Printf("> ")
+        outcome, winner, loser := gs.HandleWar(rw)
+        if outcome == gamelogic.WarOutcomeNotInvolved {
+            log.Printf("Outcome: not involved (%s) (%s) -> message nack requeued\n", winner, loser)
+            return pubsub.NackRequeue
+        }
+        if outcome == gamelogic.WarOutcomeNoUnits {
+            log.Printf("Outcome: no units (%s) (%s) -> message nack discarded\n", winner, loser)
+            return pubsub.NackDiscard
+        }
+        if outcome == gamelogic.WarOutcomeOpponentWon {
+            log.Printf("Outcome: Opponent won (%s) (%s) -> message acked\n", winner, loser)
+            return pubsub.Ack
+        }
+        if outcome == gamelogic.WarOutcomeYouWon {
+            log.Printf("Outcome: You won (%s) (%s) -> message acked\n", winner, loser)
+            return pubsub.Ack
+        }
+        if outcome == gamelogic.WarOutcomeDraw {
+            log.Printf("Outcome: Draw (%s) (%s) -> message acked\n", winner, loser)
+            return pubsub.Ack
+        }
+        log.Printf("Error happened: (%s) (%s) -> message nack discarded\n", winner, loser)
+        return pubsub.NackDiscard
+    }
 }
 
 func runClientLoop(chn *amqp.Channel, ng *gamelogic.GameState) {
@@ -110,8 +139,15 @@ func main() {
 	defer chn.Close()
 
 	newGame := gamelogic.NewGameState(username)
-    err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame))
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame))
+	err = pubsub.SubscribeJSON(
+		conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame),
+	)
+	err = pubsub.SubscribeJSON(
+		conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame),
+	)
+	err = pubsub.SubscribeJSON(
+		conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.Durable, handlerWar(newGame),
+	)
 	runClientLoop(chn, newGame)
 
 	signalChan := make(chan os.Signal, 1)
