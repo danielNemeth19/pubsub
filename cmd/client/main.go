@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-    "log"
+	"log"
 	"os"
 	"os/signal"
 	"pubsub/internal/gamelogic"
@@ -33,50 +33,48 @@ func handlerMove(gs *gamelogic.GameState) func(am gamelogic.ArmyMove, conn *amqp
 	return func(am gamelogic.ArmyMove, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
 		outcome := gs.HandleMove(am)
-        log.Printf("gamestate owner: %s -- outcome: %d\n", gs.GetUsername(), outcome)
-        log.Printf("DETERMINE ATTACKER AND DEFENDER HERE")
 		if outcome == gamelogic.MoveOutcomeMakeWar {
-			log.Printf("Gamestate owner: %s WILL PUBLISH\n", gs.GetUsername())
+            rw := gamelogic.RecognitionOfWar{Attacker: am.Player, Defender: gs.GetPlayerSnap()}
+			log.Printf("Attacker: %s -- defender: %s\n", rw.Attacker.Username, rw.Defender.Username)
 			chn, _ := conn.Channel()
 			key := routing.WarRecognitionsPrefix + "." + gs.GetUsername()
-            err := pubsub.PublishJSON(chn, routing.ExchangePerilTopic, key, am)
-            if err != nil {
-                return pubsub.NackRequeue
-            }
+			err := pubsub.PublishJSON(chn, routing.ExchangePerilTopic, key, rw)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 		}
-        return pubsub.Ack
-    }
+		return pubsub.Ack
+	}
 }
 
 func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar, conn *amqp.Connection) pubsub.AckType {
-    return func(rw gamelogic.RecognitionOfWar, conn *amqp.Connection) pubsub.AckType  {
-        defer fmt.Printf("> ")
-        outcome, winner, loser := gs.HandleWar(rw)
-        log.Printf("War handler of %s\n", gs.Player.Username)
-        if outcome == gamelogic.WarOutcomeNotInvolved {
-            log.Printf("Outcome: not involved (%s) (%s) -> message nack requeued\n", winner, loser)
-            // return pubsub.NackRequeue
-        }
-        if outcome == gamelogic.WarOutcomeNoUnits {
-            log.Printf("Outcome: no units (%s) (%s) -> message nack discarded\n", winner, loser)
-            // return pubsub.NackDiscard
-        }
-        if outcome == gamelogic.WarOutcomeOpponentWon {
-            log.Printf("Outcome: Opponent won (%s) (%s) -> message acked\n", winner, loser)
-            // return pubsub.Ack
-        }
-        if outcome == gamelogic.WarOutcomeYouWon {
-            log.Printf("Outcome: You won (%s) (%s) -> message acked\n", winner, loser)
-            // return pubsub.Ack
-        }
-        if outcome == gamelogic.WarOutcomeDraw {
-            log.Printf("Outcome: Draw (%s) (%s) -> message acked\n", winner, loser)
-            // return pubsub.Ack
-        }
-        log.Printf("Error happened: (%s) (%s) -> message nack discarded\n", winner, loser)
-        // return pubsub.NackDiscard
-        return pubsub.Ack
-    }
+	return func(rw gamelogic.RecognitionOfWar, conn *amqp.Connection) pubsub.AckType {
+		defer fmt.Printf("> ")
+		outcome, winner, loser := gs.HandleWar(rw)
+        log.Printf("War handler of %s -- rw: %s\n", gs.Player.Username, rw.Attacker.Username)
+		if outcome == gamelogic.WarOutcomeNotInvolved {
+			log.Printf("Outcome: not involved (%s) (%s) -> message nack requeued\n", winner, loser)
+			return pubsub.NackRequeue
+		}
+		if outcome == gamelogic.WarOutcomeNoUnits {
+			log.Printf("Outcome: no units (%s) (%s) -> message nack discarded\n", winner, loser)
+			return pubsub.NackDiscard
+		}
+		if outcome == gamelogic.WarOutcomeOpponentWon {
+			log.Printf("Outcome: Opponent won (%s) (%s) -> message acked\n", winner, loser)
+			return pubsub.Ack
+		}
+		if outcome == gamelogic.WarOutcomeYouWon {
+			log.Printf("Outcome: You won (%s) (%s) -> message acked\n", winner, loser)
+			return pubsub.Ack
+		}
+		if outcome == gamelogic.WarOutcomeDraw {
+			log.Printf("Outcome: Draw (%s) (%s) -> message acked\n", winner, loser)
+			return pubsub.Ack
+		}
+		log.Printf("Error happened: (%s) (%s) -> message nack discarded\n", winner, loser)
+		return pubsub.NackDiscard
+	}
 }
 
 func runClientLoop(chn *amqp.Channel, ng *gamelogic.GameState) {
