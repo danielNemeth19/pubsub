@@ -58,13 +58,14 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	)
 	return err
 }
+
 func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
     var packet bytes.Buffer
     encoder := gob.NewEncoder(&packet)
     err := encoder.Encode(val)
 
 	if err != nil {
-		panic("Marshalling failed")
+		panic("Gob encoding failed")
 	}
 	err = ch.PublishWithContext(
 		context.Background(),

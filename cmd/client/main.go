@@ -8,6 +8,7 @@ import (
 	"pubsub/internal/gamelogic"
 	"pubsub/internal/pubsub"
 	"pubsub/internal/routing"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -34,7 +35,7 @@ func handlerMove(gs *gamelogic.GameState) func(am gamelogic.ArmyMove, conn *amqp
 		defer fmt.Printf("> ")
 		outcome := gs.HandleMove(am)
 		if outcome == gamelogic.MoveOutcomeMakeWar {
-            rw := gamelogic.RecognitionOfWar{Attacker: am.Player, Defender: gs.GetPlayerSnap()}
+			rw := gamelogic.RecognitionOfWar{Attacker: am.Player, Defender: gs.GetPlayerSnap()}
 			log.Printf("Attacker: %s -- defender: %s\n", rw.Attacker.Username, rw.Defender.Username)
 			chn, _ := conn.Channel()
 			key := routing.WarRecognitionsPrefix + "." + gs.GetUsername()
@@ -51,7 +52,7 @@ func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar, con
 	return func(rw gamelogic.RecognitionOfWar, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
 		outcome, winner, loser := gs.HandleWar(rw)
-        log.Printf("War handler of %s -- rw: %s\n", gs.Player.Username, rw.Attacker.Username)
+		log.Printf("War handler of %s -- rw: %s\n", gs.Player.Username, rw.Attacker.Username)
 		if outcome == gamelogic.WarOutcomeNotInvolved {
 			log.Printf("Outcome: not involved (%s) (%s) -> message nack requeued\n", winner, loser)
 			return pubsub.NackRequeue
@@ -60,24 +61,40 @@ func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar, con
 			log.Printf("Outcome: no units (%s) (%s) -> message nack discarded\n", winner, loser)
 			return pubsub.NackDiscard
 		}
-		if outcome == gamelogic.WarOutcomeOpponentWon {
-			log.Printf("Outcome: Opponent won (%s) (%s) -> message acked\n", winner, loser)
+
+		chn, _ := conn.Channel()
+		key := routing.GameLogSlug + "." + rw.Attacker.Username
+
+		if outcome == gamelogic.WarOutcomeOpponentWon || outcome == gamelogic.WarOutcomeYouWon {
+            message := fmt.Sprintf("%s won a war against %s\n", winner, loser)
+            gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: message, Username: gs.Player.Username}
+		    err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
+            if err != nil {
+                return pubsub.NackRequeue
+            }
+            log.Printf("Outcome %d: (%s) (%s)", outcome, winner, loser)
 			return pubsub.Ack
-		}
-		if outcome == gamelogic.WarOutcomeYouWon {
-			log.Printf("Outcome: You won (%s) (%s) -> message acked\n", winner, loser)
-			return pubsub.Ack
-		}
+        }
 		if outcome == gamelogic.WarOutcomeDraw {
+            message := fmt.Sprintf("A war between %s and %s resulted in a draw\n", winner, loser)
+            gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: message, Username: gs.Player.Username}
+		    err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
+            if err != nil {
+                return pubsub.NackRequeue
+            }
 			log.Printf("Outcome: Draw (%s) (%s) -> message acked\n", winner, loser)
 			return pubsub.Ack
 		}
 		log.Printf("Error happened: (%s) (%s) -> message nack discarded\n", winner, loser)
-		return pubsub.NackDiscard
+		return pubsub.NackRequeue
 	}
 }
 
-func runClientLoop(chn *amqp.Channel, ng *gamelogic.GameState) {
+func runClientLoop(conn *amqp.Connection, ng *gamelogic.GameState) {
+	chn, err := conn.Channel()
+	if err != nil {
+		fmt.Errorf("Channel creation failed: %w", err)
+	}
 	for {
 		textInput := gamelogic.GetInput()
 		fmt.Printf("TextInput is: %s\n", textInput)
@@ -133,12 +150,6 @@ func main() {
 	}
 	fmt.Printf("username is: %s\n", username)
 
-	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, nil)
-	if err != nil {
-		panic("Error declaring and binding channel")
-	}
-	defer chn.Close()
-
 	newGame := gamelogic.NewGameState(username)
 	err = pubsub.SubscribeJSON(
 		conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame),
@@ -149,7 +160,7 @@ func main() {
 	err = pubsub.SubscribeJSON(
 		conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.Durable, handlerWar(newGame),
 	)
-	runClientLoop(chn, newGame)
+	runClientLoop(conn, newGame)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)

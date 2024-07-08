@@ -64,8 +64,16 @@ func setUpExchanges(ch *amqp.Channel) {
 }
 
 func setUpDeadLetter(conn *amqp.Connection) {
-    deadLetterTable := pubsub.GetDeadLetterConfig()
+	deadLetterTable := pubsub.GetDeadLetterConfig()
 	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDlx, routing.PerilDlq, "", pubsub.Durable, deadLetterTable)
+	if err != nil {
+		panic("Error declaring and binding channel")
+	}
+	defer chn.Close()
+}
+
+func setUpGameLogs(conn *amqp.Connection) {
+	chn, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, nil)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
@@ -86,6 +94,7 @@ func main() {
 	}
 	setUpExchanges(myC)
 	setUpDeadLetter(conn)
+	setUpGameLogs(conn)
 	gamelogic.PrintServerHelp()
 	runLoop(myC)
 
