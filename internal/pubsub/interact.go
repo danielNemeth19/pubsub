@@ -117,7 +117,7 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 		nil,       // args
 	)
 	if err != nil {
-		return fmt.Errorf("Failed to start consuming messages: %w", err)
+		return fmt.Errorf("Failed to start consuming messages: %w\n", err)
 	}
 	go func() {
 		for msg := range msgChannel {
@@ -145,3 +145,51 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 	}()
 	return nil
 }
+
+func SubscribeGob(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(gl routing.GameLog) AckType) error {
+	deadLetterTable := GetDeadLetterConfig()
+	chn, _, err := DeclareAndBind(conn, exchange, queueName, "game_logs.*", Durable, deadLetterTable)
+	if err != nil {
+		panic("Error declaring and binding channel")
+	}
+	msgChannel, err := chn.Consume(
+		queueName, // queue
+		"",        // consumer
+		false,     // auto-ack
+		false,     // exclusive
+		false,     // no-local
+		false,     // no-wait
+		nil,       // args
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to start consuming messages: %w", err)
+	}
+	go func() {
+		for msg := range msgChannel {
+			log.Printf("Received message: %s\n", string(msg.Body))
+			var gl routing.GameLog
+            network := bytes.NewReader(msg.Body)
+            dec := gob.NewDecoder(network)
+            err := dec.Decode(&gl)
+			if err != nil {
+                log.Printf("Failed to decode gob: %v\n", err)
+				continue
+			}
+			log.Printf("Out message to call handler with: %v\n", gl)
+			ackType := handler(gl)
+			switch ackType {
+			case Ack:
+				msg.Ack(false)
+				log.Println("Message acknowledged")
+			case NackRequeue:
+				msg.Nack(false, true)
+				log.Println("Message negatively acknowledged and re-queued")
+			case NackDiscard:
+				msg.Nack(false, false)
+				log.Println("Message negatively acknowledged and discarded")
+			}
+		}
+	}()
+    return nil
+}
+
