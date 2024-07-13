@@ -101,11 +101,14 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	return chn, queue, nil
 }
 
+type HandlerWithConn[T any] func(out T, conn *amqp.Connection) AckType
+type HandlerWithoutConn[T any] func(out T) AckType
+
 func DecodeJson[T any](data []byte) (T, error) {
 	var out T
 	err := json.Unmarshal(data, &out)
 	if err != nil {
-        return out, nil
+		return out, nil
 	}
 	return out, nil
 }
@@ -121,7 +124,7 @@ func DecodeGob[T any](data []byte) (T, error) {
 	return out, nil
 }
 
-func Subscribe[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T, conn *amqp.Connection) AckType, unmarshaller func([]byte) (T, error)) error {
+func Subscribe[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler any, unmarshaller func([]byte) (T, error)) error {
 	deadLetterTable := GetDeadLetterConfig()
 	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, Durable, deadLetterTable)
 	if err != nil {
@@ -147,7 +150,15 @@ func Subscribe[T any](conn *amqp.Connection, exchange, queueName, key string, si
 				continue
 			}
 			log.Printf("Out message to call handler with: %v\n", out)
-			ackType := handler(out, conn)
+            var ackType AckType
+			switch h := handler.(type) {
+			case HandlerWithConn[T]:
+				ackType = h(out, conn)
+			case HandlerWithoutConn[T]:
+				ackType = h(out)
+			default:
+                log.Printf("Unsupported handler type: %v\n", h)
+			}
 			switch ackType {
 			case Ack:
 				msg.Ack(false)
@@ -164,11 +175,10 @@ func Subscribe[T any](conn *amqp.Connection, exchange, queueName, key string, si
 	return nil
 }
 
-
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T, conn *amqp.Connection) AckType) error {
-    return Subscribe(conn, exchange, queueName, key, simpleQueueType, handler, DecodeJson)
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler any) error {
+	return Subscribe[T](conn, exchange, queueName, key, simpleQueueType, handler, DecodeJson)
 }
 
-func SubscribeGob[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler func(out T, conn *amqp.Connection) AckType) error {
-    return Subscribe(conn, exchange, queueName, key, simpleQueueType, handler, DecodeGob)
+func SubscribeGob[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int, handler any) error {
+	return Subscribe[T](conn, exchange, queueName, key, simpleQueueType, handler, DecodeGob)
 }

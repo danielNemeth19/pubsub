@@ -22,8 +22,8 @@ const (
 	Quit   = "quit"
 )
 
-func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState, conn *amqp.Connection) pubsub.AckType {
-	return func(ps routing.PlayingState, conn *amqp.Connection) pubsub.AckType {
+func handlerPause(gs *gamelogic.GameState) func(ps routing.PlayingState) pubsub.AckType {
+	return func(ps routing.PlayingState) pubsub.AckType {
 		defer fmt.Printf("> ")
 		gs.HandlePause(ps)
 		return pubsub.Ack
@@ -151,13 +151,13 @@ func main() {
 	fmt.Printf("username is: %s\n", username)
 
 	newGame := gamelogic.NewGameState(username)
-	err = pubsub.SubscribeJSON(
+	err = pubsub.SubscribeJSON[gamelogic.ArmyMove](
 		conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame),
 	)
-	err = pubsub.SubscribeJSON(
+	err = pubsub.SubscribeJSON[routing.PlayingState](
 		conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame),
 	)
-	err = pubsub.SubscribeJSON(
+	err = pubsub.SubscribeJSON[gamelogic.RecognitionOfWar](
 		conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.Durable, handlerWar(newGame),
 	)
 	runClientLoop(conn, newGame)

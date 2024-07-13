@@ -48,8 +48,8 @@ func runLoop(ch *amqp.Channel) {
 	}
 }
 
-func handlerLog() func(gl routing.GameLog, conn *amqp.Connection) pubsub.AckType {
-	return func(gl routing.GameLog, conn *amqp.Connection) pubsub.AckType {
+func handlerLog() func(gl routing.GameLog) pubsub.AckType {
+	return func(gl routing.GameLog) pubsub.AckType {
 		defer fmt.Printf("> ")
         err := gamelogic.WriteLog(gl)
         if err != nil {
@@ -85,7 +85,7 @@ func setUpDeadLetter(conn *amqp.Connection) {
 }
 
 func setUpGameLogs(conn *amqp.Connection) {
-	err := pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, handlerLog())
+    err := pubsub.SubscribeGob[routing.GameLog](conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, handlerLog())
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
