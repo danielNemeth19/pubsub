@@ -48,8 +48,8 @@ func runLoop(ch *amqp.Channel) {
 	}
 }
 
-func handlerLog() func(gl routing.GameLog) pubsub.AckType {
-	return func(gl routing.GameLog) pubsub.AckType {
+func handlerLog() func(gl routing.GameLog, conn *amqp.Connection) pubsub.AckType {
+	return func(gl routing.GameLog, conn *amqp.Connection) pubsub.AckType {
 		defer fmt.Printf("> ")
         err := gamelogic.WriteLog(gl)
         if err != nil {
