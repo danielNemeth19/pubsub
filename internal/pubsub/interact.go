@@ -130,6 +130,7 @@ func Subscribe[T any](conn *amqp.Connection, exchange, queueName, key string, si
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}
+    chn.Qos(10, 0, true)
 	msgChannel, err := chn.Consume(
 		queueName, // queue
 		"",        // consumer

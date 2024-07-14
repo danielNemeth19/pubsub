@@ -8,6 +8,7 @@ import (
 	"pubsub/internal/gamelogic"
 	"pubsub/internal/pubsub"
 	"pubsub/internal/routing"
+	"strconv"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -128,7 +129,25 @@ func runClientLoop(conn *amqp.Connection, ng *gamelogic.GameState) {
 			fmt.Println("Help should be printed")
 			gamelogic.PrintClientHelp()
 		case Spam:
-			fmt.Println("Spamming not allowed yet!")
+			if len(textInput) != 2 {
+				fmt.Printf("Spamming failed: %v\n", textInput)
+				continue
+			}
+			num, err := strconv.Atoi(textInput[1])
+			if err != nil {
+				fmt.Printf("Spam requires int, got: %s\n", textInput[1])
+				continue
+			}
+			for range num {
+				msg := gamelogic.GetMaliciousLog()
+				key := routing.GameLogSlug + "." + ng.GetUsername()
+			    gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: msg, Username: ng.GetUsername()}
+				err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
+				if err != nil {
+					fmt.Printf("Error with spamming: %s\n", err)
+				}
+			}
+			fmt.Printf("Spamming not allowed yet! %s\n", textInput[1])
 		default:
 			fmt.Printf("Command not recognized: %s\n", textInput[0])
 		}
