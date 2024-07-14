@@ -51,11 +51,11 @@ func runLoop(ch *amqp.Channel) {
 func handlerLog() func(gl routing.GameLog) pubsub.AckType {
 	return func(gl routing.GameLog) pubsub.AckType {
 		defer fmt.Printf("> ")
-        err := gamelogic.WriteLog(gl)
-        if err != nil {
-            fmt.Printf("Saving the log failed: %v\n", err)
-            return pubsub.NackRequeue
-        }
+		err := gamelogic.WriteLog(gl)
+		if err != nil {
+			fmt.Printf("Saving the log failed: %v\n", err)
+			return pubsub.NackRequeue
+		}
 		return pubsub.Ack
 	}
 }
@@ -85,7 +85,13 @@ func setUpDeadLetter(conn *amqp.Connection) {
 }
 
 func setUpGameLogs(conn *amqp.Connection) {
-    err := pubsub.SubscribeGob[routing.GameLog](conn, routing.ExchangePerilTopic, routing.GameLogSlug, "game_logs.*", pubsub.Durable, handlerLog())
+	err := pubsub.SubscribeGob[routing.GameLog](conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		"game_logs.*",
+		pubsub.Durable,
+		pubsub.HandlerWithoutConn[routing.GameLog](handlerLog()),
+	)
 	if err != nil {
 		panic("Error declaring and binding channel")
 	}

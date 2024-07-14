@@ -66,22 +66,22 @@ func handlerWar(gs *gamelogic.GameState) func(rw gamelogic.RecognitionOfWar, con
 		key := routing.GameLogSlug + "." + rw.Attacker.Username
 
 		if outcome == gamelogic.WarOutcomeOpponentWon || outcome == gamelogic.WarOutcomeYouWon {
-            message := fmt.Sprintf("%s won a war against %s\n", winner, loser)
-            gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: message, Username: gs.Player.Username}
-		    err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
-            if err != nil {
-                return pubsub.NackRequeue
-            }
-            log.Printf("Outcome %d: (%s) (%s)", outcome, winner, loser)
+			message := fmt.Sprintf("%s won a war against %s\n", winner, loser)
+			gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: message, Username: gs.Player.Username}
+			err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
+			log.Printf("Outcome %d: (%s) (%s)", outcome, winner, loser)
 			return pubsub.Ack
-        }
+		}
 		if outcome == gamelogic.WarOutcomeDraw {
-            message := fmt.Sprintf("A war between %s and %s resulted in a draw\n", winner, loser)
-            gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: message, Username: gs.Player.Username}
-		    err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
-            if err != nil {
-                return pubsub.NackRequeue
-            }
+			message := fmt.Sprintf("A war between %s and %s resulted in a draw\n", winner, loser)
+			gameLogMessage := routing.GameLog{CurrentTime: time.Now(), Message: message, Username: gs.Player.Username}
+			err := pubsub.PublishGob(chn, routing.ExchangePerilTopic, key, gameLogMessage)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			log.Printf("Outcome: Draw (%s) (%s) -> message acked\n", winner, loser)
 			return pubsub.Ack
 		}
@@ -152,13 +152,19 @@ func main() {
 
 	newGame := gamelogic.NewGameState(username)
 	err = pubsub.SubscribeJSON[gamelogic.ArmyMove](
-		conn, routing.ExchangePerilTopic, "army_move"+"."+username, "army_moves.*", pubsub.Transient, handlerMove(newGame),
+		conn, routing.ExchangePerilTopic, "army_move"+"."+username,
+		"army_moves.*", pubsub.Transient,
+		pubsub.HandlerWithConn[gamelogic.ArmyMove](handlerMove(newGame)),
 	)
 	err = pubsub.SubscribeJSON[routing.PlayingState](
-		conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(newGame),
+		conn, routing.ExchangePerilDirect, routing.PauseKey+"."+username,
+		routing.PauseKey, pubsub.Transient,
+		pubsub.HandlerWithoutConn[routing.PlayingState](handlerPause(newGame)),
 	)
 	err = pubsub.SubscribeJSON[gamelogic.RecognitionOfWar](
-		conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.Durable, handlerWar(newGame),
+		conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.Durable, pubsub.HandlerWithConn[gamelogic.RecognitionOfWar](handlerWar(newGame)),
 	)
 	runClientLoop(conn, newGame)
 
